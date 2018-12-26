@@ -1,0 +1,55 @@
+.TH WacKeys 1 2018-12-26 "WacKeys v1.0.0" "WacKeys Manual"
+.SH NAME
+WacKeys \- A backend for Wacom ExpressKeys.
+.SH SYNOPSIS
+.B
+wackeys
+.OP -h
+.OP -d
+.OP -v
+.SH DESCRIPTION
+WacKeys offers a backend for Wacom tablet key events using
+.B libinput
+and redirecting these events to a socket that can be read by an external process.
+.SH OPTIONS
+.TP
+\fB\-h\fP
+Display help and exit.
+.TP
+\fB\-d\fP
+Run process as daemon
+.TP
+\fB\-v\fP
+Print version number and exit
+.SH SOCKET INFORMATION
+Socket is created at \fB/tmp/WacKeys.sock\fP. \fBWacKeys\fP sends key (and ring)
+events, as well as pad mode to socket as 8 byte messages. The two first characters represent
+button or ring state.
+.TP
+BP
+Button press
+.TP
+BR
+Button release
+.TP
+RR
+Ring rotation
+.TP
+RD
+Ring rotation release
+.P
+These are followed by number of button or ring position formatted as 3 digits.
+The last part consists of \fBM\fP (referring to mode) followed by 2 digits number
+represnting the mode.
+.SS
+\fBExample\fB
+.TP
+\fBBP\fI001\fBM\fI03\fP
+The second ExpressKey is pressed, mode layer 4.
+.TP
+\fBRP\fI270\fBM\fI00\fP
+Current ring position is 270 degrees, mode layer 1.
+.SH SEE ALSO
+Visit <https://github.com/khalid151/WacKeys> for examples.
+.SH AUTHOR
+Khalid J.
