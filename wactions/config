@@ -1,0 +1,20 @@
+[default]
+button_8 = ctrl+z
+
+; Map ring to mouse wheel with xdotool.
+ring_ccw = run:xdotool click 4
+ring_cw = run:xdotool click 5
+
+[krita]
+button_7 = ctrl+shift+z
+button_6 = m
+
+; Map ring to brackets `[` and `]` with their keycodes.
+; Use `xev` to get keycodes.
+ring_ccw = 34
+ring_cw = 35
+
+[krita/layer_2]
+; Map ring to rotate canvas in layer 2. This applies to default krita shortcuts.
+ring_ccw = ctrl+34
+ring_cw = ctrl+35
