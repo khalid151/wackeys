@@ -12,22 +12,32 @@
 #include <libinput.h>
 #include <libudev.h>
 
-#define VENDOR_ID "056a"
 #define SOCK_PATH "/tmp/WacKeys.sock"
 
+static char **device_list; // To track devices so they won't be added again
+static int dev_count = 0; // Will hold number of added devices
 static int sockfd;
 static int updated_pos = 0; // Will hold ring position
 static volatile sig_atomic_t stop = 0;
 
-void signal_handler(int sig)
+// This function is used to check if a path of added device exists in device_list
+int device_exists(const char *path)
 {
-    stop = 1;
-    close_sockfd(sig);
+    for(int i = 0; i < dev_count; i++)
+        if(strcmp(device_list[i], path) == 0)
+            return 1;
+    return 0;
 }
 
 void close_sockfd(int sig)
 {
     close(sockfd);
+}
+
+void signal_handler(int sig)
+{
+    stop = 1;
+    close_sockfd(sig);
 }
 
 int open_restricted(const char *path, int flags, void *user_data)
@@ -43,7 +53,7 @@ void close_restricted(int fd, void *user_data)
 
 void handle_buttons(struct libinput_event *ev)
 {
-    char msg[8];
+    char msg[9];
     struct libinput_event_tablet_pad *pad = libinput_event_get_tablet_pad_event(ev);
     enum libinput_button_state state;
     unsigned int button, mode;
@@ -61,7 +71,7 @@ void handle_buttons(struct libinput_event *ev)
 
 void handle_ring(struct libinput_event *ev)
 {
-    char msg[8];
+    char msg[9];
     struct libinput_event_tablet_pad *pad = libinput_event_get_tablet_pad_event(ev);
     unsigned int mode;
     int pos = 0;
@@ -107,27 +117,39 @@ void libudev_add_wacom(struct udev *udev, struct libinput *li)
     // Wait until event nodes are created
     usleep(500000);
 
-    struct udev_device *dev;
+    struct udev_device *dev, *parent;
     struct udev_list_entry *devices, *list;
     struct udev_enumerate *enumerate = udev_enumerate_new(udev);
 
-    udev_enumerate_add_match_property(enumerate, "ID_VENDOR_ID", VENDOR_ID);
+    udev_enumerate_add_match_subsystem(enumerate, "input"); // Filter input devices
     udev_enumerate_scan_devices(enumerate);
     devices = udev_enumerate_get_list_entry(enumerate);
 
     udev_list_entry_foreach(list, devices) {
         dev = udev_device_new_from_syspath(udev, udev_list_entry_get_name(list));
+        parent = udev_device_get_parent(dev);
         const char *path = udev_device_get_devnode(dev);
-        if(path) {
-            if(strstr(path, "event") != NULL)
-                if(!libinput_path_add_device(li, path)) {
-                    fprintf(stderr, "Failed to add device: %s\n", path);
-                    libinput_unref(li);
-                    udev_device_unref(dev);
-                    udev_enumerate_unref(enumerate);
-                    udev_unref(udev);
-                    exit(EXIT_FAILURE);
+        const char *syspath = udev_device_get_syspath(parent);
+        if(path && syspath) {
+            // Check if device path is /dev/input/event* and parent syspath contains Wacom vendor ID
+            if(strstr(path, "event") && strstr(syspath, "056A")) {
+                // Check if not already added
+                if(!device_exists(syspath)) {
+                    if(libinput_path_add_device(li, path)) {
+                        // Keep track of device syspath
+                        device_list = realloc(device_list, ++dev_count * sizeof(*device_list));
+                        device_list[dev_count - 1] = malloc(strlen(syspath) * sizeof(char) + 1);
+                        strcpy(device_list[dev_count - 1], syspath);
+                    } else {
+                        fprintf(stderr, "Failed to add device: %s\n", path);
+                        libinput_unref(li);
+                        udev_device_unref(dev);
+                        udev_enumerate_unref(enumerate);
+                        udev_unref(udev);
+                        exit(EXIT_FAILURE);
+                    }
                 }
+            }
         }
         udev_device_unref(dev);
     }
@@ -213,6 +235,8 @@ int main(int argc, char **argv)
     }
 
     udev_monitor_filter_add_match_subsystem_devtype(mon, "usb", "usb_device");
+    udev_monitor_filter_add_match_subsystem_devtype(mon, "bluetooth", "link");
+    device_list = malloc(sizeof(*device_list)); // Just in case it wasn't allocated before free
     int mon_fd = udev_monitor_get_fd(mon);
     udev_monitor_enable_receiving(mon);
 
@@ -247,6 +271,9 @@ int main(int argc, char **argv)
     }
     udev_unref(udev);
     libinput_unref(li);
+    for(int i = 0; i < dev_count; i++)
+        free(device_list[i]);
+    free(device_list);
 
     return EXIT_SUCCESS;
 }
