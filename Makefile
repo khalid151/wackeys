@@ -1,7 +1,7 @@
 EXEC=wackeys
 SRC=$(EXEC).c
 OBJ=$(EXEC).o
-VERSION=1.1.0
+VERSION=1.1.1
 CC=gcc
 CFLAGS= -DVERSION="\"$(VERSION)\"" -DNAME="\"$(EXEC)\""
 LIBS=-ludev -linput

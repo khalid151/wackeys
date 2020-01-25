@@ -115,7 +115,7 @@ void handle_libinput_events(struct libinput *li)
 void libudev_add_wacom(struct udev *udev, struct libinput *li)
 {
     // Wait until event nodes are created
-    usleep(500000);
+    sleep(1);
 
     struct udev_device *dev, *parent;
     struct udev_list_entry *devices, *list;
