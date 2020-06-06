@@ -10,6 +10,17 @@ PREFIX?=/usr
 BINDIR=$(PREFIX)/bin
 
 all: $(EXEC)
+	@echo -e	"[Unit]\n\
+	Description=Wackeys daemon service\n\
+	Documentation=man:wackeys(1)\n\
+	After=systemd-udevd.service\n\
+	\n\
+	[Service]\n\
+	Type=simple\n\
+	ExecStart=$(DESTDIR)$(BINDIR)/$(EXEC)\n\
+	\n\
+	[Install]\n\
+	WantedBy=multi-user.target" > $(EXEC).service
 
 $(EXEC): $(OBJ)
 	$(CC) $(LIBS) $(OBJ) -o $(EXEC)
@@ -27,6 +38,12 @@ install: $(EXEC) $(EXEC).1
 	install -D -m 755 $(EXEC) $(DESTDIR)$(BINDIR)/$(EXEC)
 	install -D -m 644 $(EXEC).1 $(DESTDIR)$(PREFIX)/share/man/man1/$(EXEC).1
 
+install_service:
+	install -D -m 644 $(EXEC).service $(DESTDIR)$(PREFIX)/lib/systemd/system/
+
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/$(EXEC)
 	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/$(EXEC).1
+
+uninstall_service:
+	rm -f $(DESTDIR)$(PREFIX)/lib/systemd/system/$(EXEC).service
