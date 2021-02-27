@@ -1,28 +1,29 @@
-.TH WacKeys 1 2020-01-26 "WacKeys v1.1.1" "WacKeys Manual"
+.TH WacKeys 1 2021-02-27 "WacKeys v1.2.1" "WacKeys Manual"
 .SH NAME
 WacKeys \- A backend for Wacom ExpressKeys.
 .SH SYNOPSIS
 .B
 wackeys
-.OP -h
-.OP -d
-.OP -v
+.OP OPTIONS
 .SH DESCRIPTION
-WacKeys offers a backend for Wacom tablet key events using
+Wackeys offers a backend for Wacom tablet key events using
 .B libinput
 and redirecting these events to a socket that can be read by an external process.
 .SH OPTIONS
 .TP
-\fB\-h\fP
+\fB\-d, --daemon\fP
+Run process as daemon.
+.TP
+\fB\-h, --help\fP
 Display help and exit.
 .TP
-\fB\-d\fP
-Run process as daemon
+\fB\-s, --seat\fP
+Define seat name to use. Default value is "seat0".
 .TP
-\fB\-v\fP
-Print version number and exit
+\fB\-v, --version\fP
+Print version number and exit.
 .SH SOCKET INFORMATION
-Socket is created at \fB/tmp/WacKeys.sock\fP. \fBWacKeys\fP sends key (and ring)
+Socket is created at \fB/tmp/WacKeys.sock\fP. \fBWackeys\fP sends key (and ring)
 events, as well as pad mode to socket as 8 byte messages. The two first characters represent
 button or ring state.
 .TP
@@ -40,7 +41,7 @@ Ring rotation release
 .P
 These are followed by number of button or ring position formatted as 3 digits.
 The last part consists of \fBM\fP (referring to mode) followed by 2 digits number
-represnting the mode.
+representing the mode.
 .SS
 \fBExample\fB
 .TP
@@ -52,4 +53,4 @@ Current ring position is 270 degrees, mode layer 1.
 .SH SEE ALSO
 Visit <https://github.com/khalid151/WacKeys> for examples.
 .SH AUTHOR
-Khalid J.
+Khalid Jamal

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <poll.h>
 #include <signal.h>
 #include <string.h>
@@ -14,20 +15,10 @@
 
 #define SOCK_PATH "/tmp/WacKeys.sock"
 
-static char **device_list; // To track devices so they won't be added again
-static int dev_count = 0; // Will hold number of added devices
 static int sockfd;
 static int updated_pos = 0; // Will hold ring position
 static volatile sig_atomic_t stop = 0;
-
-// This function is used to check if a path of added device exists in device_list
-int device_exists(const char *path)
-{
-    for(int i = 0; i < dev_count; i++)
-        if(strcmp(device_list[i], path) == 0)
-            return 1;
-    return 0;
-}
+static int exit_status = EXIT_SUCCESS;
 
 void close_sockfd(int sig)
 {
@@ -106,80 +97,53 @@ void handle_libinput_events(struct libinput *li)
             case LIBINPUT_EVENT_TABLET_PAD_RING:
                 handle_ring(event);
                 break;
+            default: // do nothing
+                break;
         }
         libinput_event_destroy(event);
         libinput_dispatch(li);
     }
 }
 
-void libudev_add_wacom(struct udev *udev, struct libinput *li)
-{
-    // Wait until event nodes are created
-    sleep(1);
-
-    struct udev_device *dev, *parent;
-    struct udev_list_entry *devices, *list;
-    struct udev_enumerate *enumerate = udev_enumerate_new(udev);
-
-    udev_enumerate_add_match_subsystem(enumerate, "input"); // Filter input devices
-    udev_enumerate_scan_devices(enumerate);
-    devices = udev_enumerate_get_list_entry(enumerate);
-
-    udev_list_entry_foreach(list, devices) {
-        dev = udev_device_new_from_syspath(udev, udev_list_entry_get_name(list));
-        parent = udev_device_get_parent(dev);
-        const char *path = udev_device_get_devnode(dev);
-        const char *syspath = udev_device_get_syspath(parent);
-        if(path && syspath) {
-            // Check if device path is /dev/input/event* and parent syspath contains Wacom vendor ID
-            if(strstr(path, "event") && strstr(syspath, "056A")) {
-                // Check if not already added
-                if(!device_exists(syspath)) {
-                    if(libinput_path_add_device(li, path)) {
-                        // Keep track of device syspath
-                        device_list = realloc(device_list, ++dev_count * sizeof(*device_list));
-                        device_list[dev_count - 1] = malloc(strlen(syspath) * sizeof(char) + 1);
-                        strcpy(device_list[dev_count - 1], syspath);
-                    } else {
-                        fprintf(stderr, "Failed to add device: %s\n", path);
-                        libinput_unref(li);
-                        udev_device_unref(dev);
-                        udev_enumerate_unref(enumerate);
-                        udev_unref(udev);
-                        exit(EXIT_FAILURE);
-                    }
-                }
-            }
-        }
-        udev_device_unref(dev);
-    }
-    udev_enumerate_unref(enumerate);
-}
-
-void handle_libudev_events(struct udev_monitor *mon, struct libinput *li)
-{
-    struct udev_device *dev = udev_monitor_receive_device(mon);
-    if(dev)
-        if(strcmp(udev_device_get_action(dev), "add") == 0)
-            libudev_add_wacom(udev_monitor_get_udev(mon), li);
-    udev_device_unref(dev);
+void usage() {
+    printf("\
+Usage: %s [options]\n\
+  -d, --daemon\tRun process as daemon\n\
+  -h, --help\tDisplay help and exit\n\
+  -s, --seat\tDefine seat name to use\n\
+  -v, --version\tPrint version number and exit\n", NAME);
 }
 
 int main(int argc, char **argv)
 {
     int opt = 0, run_as_daemon = 0;
+    char seat[256] = "seat0"; // default seat set to seat0
+    const struct option options[] = {
+        {"daemon",   no_argument,        &run_as_daemon,    1},
+        {"help",     no_argument,        0,               'h'},
+        {"seat",     required_argument,  0,               's'},
+        {"version",  no_argument,        0,               'v'},
+    };
 
-    while((opt = getopt(argc, argv, "hdv")) != -1) {
-        switch(opt) {
+    while((opt = getopt_long(argc, argv, "dhs:v", options, NULL)) != -1) {
+        switch (opt) {
+            case 0: // do nothing
+                break;
             case 'd':
                 run_as_daemon = 1;
                 break;
             case 'h':
-                printf("Usage: %s [options]\n  -d\tRun process as daemon\n  -v\tPrint version number and exit\n", NAME);
+                usage();
                 exit(EXIT_SUCCESS);
+            case 's':
+                strncpy(seat, optarg, sizeof(seat));
+                break;
             case 'v':
                 printf("%s v%s\n", NAME, VERSION);
                 exit(EXIT_SUCCESS);
+            default:
+                usage();
+                exit(EXIT_FAILURE);
         }
     }
 
@@ -190,27 +154,33 @@ int main(int argc, char **argv)
     signal(SIGTERM, signal_handler);
     signal(SIGPIPE, close_sockfd);
 
-    int fd = -1, len = sizeof(struct sockaddr_un);
+    int fd = -1;
+    socklen_t len = sizeof(struct sockaddr_un);
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(struct sockaddr_un));
 
-    if((fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0)
+    if((fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
         fprintf(stderr, "Failed connecting socket\n");
+        exit(EXIT_FAILURE);
+    }
 
     addr.sun_family = AF_UNIX;
     strcpy(addr.sun_path, SOCK_PATH);
     unlink(SOCK_PATH);
-    if(bind(fd, (struct sockaddr *) &addr, len) < 0)
+    if(bind(fd, (struct sockaddr *) &addr, len) < 0) {
         fprintf(stderr, "Failed binding socket\n");
+        exit(EXIT_FAILURE);
+    }
 
     // Change permissons so user can connect to socket
     chmod(SOCK_PATH, 0666);
 
-    if(listen(fd, 10) < 0)
+    if(listen(fd, 10) < 0) {
         fprintf(stderr, "Failed listening to socket\n");
+        exit(EXIT_FAILURE);
+    }
 
     struct udev *udev;
-    struct udev_monitor *mon;
     struct libinput *li;
 
     const struct libinput_interface interface = {
@@ -220,60 +190,49 @@ int main(int argc, char **argv)
 
     if(!(udev = udev_new())) {
         fprintf(stderr, "Failed to create udev\n");
-        exit(EXIT_FAILURE);
+        exit_status = EXIT_FAILURE;
+        goto EXIT;
     }
 
-    if(!(mon = udev_monitor_new_from_netlink(udev, "udev"))) {
-        fprintf(stderr, "Failed to create udev monitor\n");
-        exit(EXIT_FAILURE);
-    }
+    li = libinput_udev_create_context(&interface, NULL, udev);
 
-    li = libinput_path_create_context(&interface, NULL);
     if(!li) {
         fprintf(stderr, "Failed to initialize libinput context\n");
-        exit(EXIT_FAILURE);
+        exit_status = EXIT_FAILURE;
+        goto EXIT;
     }
 
-    udev_monitor_filter_add_match_subsystem_devtype(mon, "usb", "usb_device");
-    udev_monitor_filter_add_match_subsystem_devtype(mon, "bluetooth", "link");
-    device_list = malloc(sizeof(*device_list)); // Just in case it wasn't allocated before free
-    int mon_fd = udev_monitor_get_fd(mon);
-    udev_monitor_enable_receiving(mon);
+    if(libinput_udev_assign_seat(li, seat) < 0) {
+        fprintf(stderr, "Failed to assign seat\n");
+        exit_status = EXIT_FAILURE;
+        goto EXIT;
+    }
 
-    libudev_add_wacom(udev, li);
-
-    // Handle first "LIBINPUT_EVENT_DEVICE_ADDED" without logging
-    handle_libinput_events(li);
+    libinput_dispatch(li);
 
     // Poll for other events
-    struct pollfd fds[3];
+    struct pollfd fds[2];
     fds[0].fd = libinput_get_fd(li);
-    fds[1].fd = mon_fd;
-    fds[2].fd = fd;
+    fds[1].fd = fd;
     fds[0].events = POLLIN;
     fds[1].events = POLLIN;
-    fds[2].events = POLLIN;
     fds[0].revents = 0;
     fds[1].revents = 0;
-    fds[2].revents = 0;
 
-    while(!stop && poll(fds, 3, -1) > -1) {
+    nfds_t nfds = sizeof(fds)/sizeof(struct pollfd);
+
+    while(!stop && poll(fds, nfds, -1) > -1) {
         if(fds[0].revents & POLLIN) {
             handle_libinput_events(li);
         }
         if(fds[1].revents & POLLIN) {
-            handle_libudev_events(mon, li);
-        }
-        if(fds[2].revents & POLLIN) {
             if((sockfd = accept(fd, NULL, &len)) < 0)
                 fprintf(stderr, "Failed accepting client\n");
         }
     }
+EXIT:
     udev_unref(udev);
     libinput_unref(li);
-    for(int i = 0; i < dev_count; i++)
-        free(device_list[i]);
-    free(device_list);
 
-    return EXIT_SUCCESS;
+    return exit_status;
 }

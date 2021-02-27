@@ -1,14 +1,15 @@
 EXEC=wackeys
 SRC=$(EXEC).c
 OBJ=$(EXEC).o
-VERSION=1.1.1
+VERSION=1.2.1
 CC=gcc
-CFLAGS= -DVERSION="\"$(VERSION)\"" -DNAME="\"$(EXEC)\""
+CFLAGS= -DVERSION="\"$(VERSION)\"" -DNAME="\"$(EXEC)\"" -Wall
 LIBS=-ludev -linput
 
 PREFIX?=/usr
 BINDIR=$(PREFIX)/bin
 
+all: CFLAGS += -Werror
 all: $(EXEC)
 	@echo -e	"[Unit]\n\
 	Description=Wackeys daemon service\n\
@@ -29,10 +30,10 @@ $(OBJ): $(SRC)
 	$(CC) $(CFLAGS) -c $(SRC)
 
 debug: $(EXEC)
-debug: CFLAGS += -g -Wall
+debug: CFLAGS += -g
 
 clean:
-	rm -rf *o $(EXEC)
+	rm *o $(EXEC) $(EXEC).service
 
 install: $(EXEC) $(EXEC).1
 	install -D -m 755 $(EXEC) $(DESTDIR)$(BINDIR)/$(EXEC)
